@@ -1,0 +1,540 @@
+/* LMY Lattice — dark, high-contrast, minimal.
+   Designed for information density and stage readability. */
+
+:root {
+  --bg: #0a0a0b;
+  --bg-panel: #111114;
+  --bg-panel-2: #16161a;
+  --border: #25252b;
+  --border-strong: #3a3a43;
+  --text: #e8e8ea;
+  --text-dim: #8a8a92;
+  --text-faint: #55555c;
+  --accent: #f5f1e6;          /* warm white for selected */
+  --accent-2: #c89b2a;         /* subtle warm highlight */
+  --seq: #d87b3a;              /* sequence path orange */
+  --node: #1c1c22;
+  --node-stroke: #47474f;
+  --edge-x: #2a2a33;
+  --edge-y: #2a2a33;
+  --shadow: 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --mono: "SF Mono", "Menlo", "Consolas", ui-monospace, monospace;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  margin: 0;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+h1 {
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+h3 {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--text-faint);
+  margin: 14px 0 6px;
+}
+
+button {
+  font: inherit;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+}
+
+button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+input[type="number"] {
+  font: inherit;
+  font-family: var(--mono);
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  width: 72px;
+}
+
+input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent-2);
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  gap: 0;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.title .sub {
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.app-body {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  min-height: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.lattice-area {
+  min-width: 0;
+  min-height: 0;
+  padding: 20px;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.side-col {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  border-left: 1px solid var(--border);
+  min-height: 0;
+  overflow: auto;
+}
+
+.app-footer {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  border-top: 1px solid var(--border);
+  max-height: 38vh;
+  min-height: 180px;
+  overflow: hidden;
+}
+
+.panel {
+  padding: 16px 20px;
+  background: var(--bg-panel);
+}
+
+.panel + .panel {
+  border-top: 1px solid var(--border);
+}
+
+.side-col .panel {
+  border-bottom: 1px solid var(--border);
+}
+
+.app-footer .panel {
+  overflow: auto;
+}
+
+.app-footer .panel + .panel {
+  border-top: none;
+  border-left: 1px solid var(--border);
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.panel-head h2 {
+  margin: 0;
+}
+
+.panel-head .actions {
+  display: flex;
+  gap: 6px;
+}
+
+.empty {
+  color: var(--text-faint);
+  font-style: italic;
+  font-size: 12px;
+}
+
+.subtitle {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 4px 14px;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+dt {
+  color: var(--text-faint);
+}
+
+dd {
+  color: var(--text);
+  margin: 0;
+}
+
+dd.character {
+  font-family: var(--sans);
+  font-style: italic;
+  color: var(--accent);
+}
+
+dd.mono {
+  font-family: var(--mono);
+}
+
+/* ---------- Lattice SVG ---------- */
+
+.lattice {
+  width: 100%;
+  height: 100%;
+  max-width: 1200px;
+  max-height: 100%;
+}
+
+.axis-label {
+  fill: var(--text-faint);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-family: var(--sans);
+}
+
+.grid-line {
+  stroke: var(--border);
+  stroke-width: 0.5;
+  stroke-dasharray: 2 4;
+}
+
+.edge {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.seq-line {
+  stroke: var(--seq);
+  stroke-width: 1.8;
+  fill: none;
+  opacity: 0.8;
+}
+
+.node {
+  cursor: pointer;
+}
+
+.node-halo {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 1;
+}
+
+.node-body {
+  fill: var(--node);
+  stroke: var(--node-stroke);
+  stroke-width: 1;
+  transition: fill 80ms ease, stroke 80ms ease;
+}
+
+.node:hover .node-body,
+.node.is-hovered .node-body {
+  fill: #22222a;
+  stroke: var(--accent-2);
+}
+
+.node.is-selected .node-body {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
+.node.is-selected .node-ratio,
+.node.is-selected .node-cents,
+.node.is-selected .node-coord {
+  fill: #0a0a0b;
+}
+
+.node.in-sequence .node-halo {
+  stroke: var(--seq);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.node-ratio {
+  fill: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.node-cents {
+  fill: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 9px;
+}
+
+.node-coord {
+  fill: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 8px;
+}
+
+.seq-badge circle {
+  fill: var(--seq);
+}
+.seq-badge text {
+  fill: #0a0a0b;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* ---------- Root control ---------- */
+
+.root-control {
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.root-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.root-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+}
+
+.root-meta {
+  color: var(--text-dim);
+}
+
+.root-control .reset {
+  font-size: 11px;
+}
+
+/* ---------- Movement / info panels ---------- */
+
+.move-from-to {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-family: var(--mono);
+  font-size: 16px;
+}
+
+.move-from-to .arrow {
+  color: var(--seq);
+}
+
+/* ---------- Sequence builder ---------- */
+
+.sequence-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.sequence-list li {
+  display: grid;
+  grid-template-columns: 24px 60px 60px 1fr 60px 24px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--border);
+  cursor: grab;
+}
+
+.sequence-list li:active {
+  cursor: grabbing;
+}
+
+.sequence-list .idx {
+  color: var(--text-faint);
+}
+
+.sequence-list .ratio {
+  color: var(--text);
+}
+
+.sequence-list .cents,
+.sequence-list .interval,
+.sequence-list .dist {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.sequence-list .remove {
+  padding: 0;
+  border: none;
+  color: var(--text-faint);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sequence-list .remove:hover {
+  color: var(--seq);
+}
+
+.tension-curve {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.tension-label {
+  font-size: 10px;
+  color: var(--text-faint);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.tension-svg {
+  width: 100%;
+  height: 80px;
+  display: block;
+}
+
+/* ---------- Group panel ---------- */
+
+.group-default {
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.group-default .subtitle {
+  margin-bottom: 6px;
+}
+
+.group-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.group-list li {
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.group-step-head {
+  display: flex;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.group-step-head .idx {
+  color: var(--text-faint);
+}
+
+.group-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.group-cell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.group-cell input {
+  width: 54px;
+}
+
+.group-cell .hz {
+  color: var(--text-faint);
+  min-width: 60px;
+}
+
+/* ---------- scrollbars ---------- */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
