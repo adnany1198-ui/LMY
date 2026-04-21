@@ -549,8 +549,29 @@ export function SimulationCanvas(props: Props) {
           const cx = origin.x + s.xMeters * ppm;
           const cy = origin.y + s.yMeters * ppm;
           const selected = s.id === props.selectedSourceId;
+
+          // Diagnostic: the grid cell the shader actually injects into.
+          // metersToCell maps world (m) → continuous cell index; floor() gives
+          // the containing cell. If this cyan square doesn't sit under the
+          // pink dot, the screen→grid transform is off.
+          const cell = props.grid.metersToCell(s.xMeters, s.yMeters);
+          const cellGx = Math.floor(cell.x);
+          const cellGy = Math.floor(cell.y);
+          const cellSz = props.grid.dx * ppm;
+          const cellX = origin.x + cellGx * cellSz;
+          const cellY = origin.y + cellGy * cellSz;
+
           return (
             <g key={s.id}>
+              <rect
+                x={cellX}
+                y={cellY}
+                width={cellSz}
+                height={cellSz}
+                fill="rgba(0, 220, 255, 0.18)"
+                stroke="rgba(0, 220, 255, 0.9)"
+                strokeWidth={1}
+              />
               <circle
                 cx={cx}
                 cy={cy}

@@ -12,6 +12,7 @@ in vec2 v_uv;
 #define MAX_SOURCES 32
 
 uniform sampler2D u_pressure;     // result of FDTD step
+uniform sampler2D u_boundaries;   // rg: wall mask, absorption
 uniform vec2 u_resolution;        // grid dimensions in cells
 uniform int u_source_count;
 uniform vec4 u_sources[MAX_SOURCES]; // xy = grid pos, z = amplitude, w = radius (cells)
@@ -29,6 +30,14 @@ float hash(vec2 p) {
 void main() {
     vec2 coord = v_uv * u_resolution;
     float p = texture(u_pressure, v_uv).r;
+
+    // Don't pump energy into wall cells. The FDTD step zeros them the next
+    // frame anyway, but skipping injection here prevents a single-frame
+    // spike that can read as a spurious source at wall/air interfaces.
+    if (texture(u_boundaries, v_uv).r > 0.5) {
+        fragColor = vec4(p, 0.0, 0.0, 1.0);
+        return;
+    }
 
     for (int i = 0; i < MAX_SOURCES; i++) {
         if (i >= u_source_count) break;

@@ -56,8 +56,14 @@ vec3 darkSpectrogram(float t) {
 }
 
 void main() {
-    float p = texture(u_pressure, v_uv).r * u_gain;
-    float wall = texture(u_boundaries, v_uv).r;
+    // WebGL textures have y=0 at the bottom, but the rest of the app (click
+    // handlers, SVG overlays, site-plan image, segmentation canvas) all use
+    // the DOM convention of y=0 at the top. Sampling with a flipped Y keeps
+    // the displayed pressure aligned with every other layer without having
+    // to flip the physics textures themselves.
+    vec2 uv = vec2(v_uv.x, 1.0 - v_uv.y);
+    float p = texture(u_pressure, uv).r * u_gain;
+    float wall = texture(u_boundaries, uv).r;
 
     float t = clamp(p, -1.0, 1.0);
 

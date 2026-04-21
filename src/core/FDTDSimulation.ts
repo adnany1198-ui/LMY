@@ -309,6 +309,10 @@ export class FDTDSimulation {
     gl.bindTexture(gl.TEXTURE_2D, this.state[this.idxNext].texture);
     gl.uniform1i(gl.getUniformLocation(this.sourceProgram, "u_pressure"), 0);
 
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.boundaryTex);
+    gl.uniform1i(gl.getUniformLocation(this.sourceProgram, "u_boundaries"), 1);
+
     gl.uniform2f(gl.getUniformLocation(this.sourceProgram, "u_resolution"), width, height);
     gl.uniform1f(gl.getUniformLocation(this.sourceProgram, "u_time"), this._simTime);
 
