@@ -85,7 +85,18 @@ function createBoundaryTexture(gl: WebGL2RenderingContext, w: number, h: number)
   const tex = gl.createTexture();
   if (!tex) throw new Error("createTexture failed");
   gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array(w * h));
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RG8,
+    w,
+    h,
+    0,
+    gl.RG,
+    gl.UNSIGNED_BYTE,
+    new Uint8Array(w * h * 2),
+  );
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -101,6 +112,8 @@ export interface FDTDSimulationOptions {
   pmlWidth?: number;
   /** absorbing edge layer max extra damping */
   pmlStrength?: number;
+  /** global gain on per-cell absorption map (boundary.g) */
+  absorbStrength?: number;
 }
 
 export interface RenderOptions {
@@ -128,6 +141,7 @@ export class FDTDSimulation {
   private damping: number;
   private pmlWidth: number;
   private pmlStrength: number;
+  private absorbStrength: number;
 
   private _simTime = 0;
   private _stepCount = 0;
@@ -148,6 +162,7 @@ export class FDTDSimulation {
     this.damping = opts.damping ?? 0.9998;
     this.pmlWidth = opts.pmlWidth ?? Math.max(12, Math.round(opts.grid.width * 0.05));
     this.pmlStrength = opts.pmlStrength ?? 0.06;
+    this.absorbStrength = opts.absorbStrength ?? 0.02;
 
     const vao = gl.createVertexArray();
     if (!vao) throw new Error("createVertexArray failed");
@@ -213,13 +228,15 @@ export class FDTDSimulation {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  /** Upload a boundary mask (row-major, length = grid.width * grid.height). */
+  /**
+   * Upload an interleaved RG boundary mask (row-major, length = cells * 2).
+   * Byte layout per cell: [wall (0 air / 255 rigid), absorption 0..255].
+   */
   uploadBoundaries(mask: Uint8Array) {
     const gl = this.gl;
-    if (mask.length !== this.grid.width * this.grid.height) {
-      throw new Error(
-        `Boundary mask size ${mask.length} != grid ${this.grid.width * this.grid.height}`,
-      );
+    const expected = this.grid.width * this.grid.height * 2;
+    if (mask.length !== expected) {
+      throw new Error(`Boundary mask size ${mask.length} != expected ${expected}`);
     }
     gl.bindTexture(gl.TEXTURE_2D, this.boundaryTex);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -230,10 +247,14 @@ export class FDTDSimulation {
       0,
       this.grid.width,
       this.grid.height,
-      gl.RED,
+      gl.RG,
       gl.UNSIGNED_BYTE,
       mask,
     );
+  }
+
+  setAbsorbStrength(v: number) {
+    this.absorbStrength = v;
   }
 
   /** Run a single FDTD timestep plus source injection. */
@@ -268,6 +289,10 @@ export class FDTDSimulation {
     gl.uniform1f(gl.getUniformLocation(this.fdtdProgram, "u_damping"), this.damping);
     gl.uniform1f(gl.getUniformLocation(this.fdtdProgram, "u_pml_width"), this.pmlWidth);
     gl.uniform1f(gl.getUniformLocation(this.fdtdProgram, "u_pml_strength"), this.pmlStrength);
+    gl.uniform1f(
+      gl.getUniformLocation(this.fdtdProgram, "u_absorb_strength"),
+      this.absorbStrength,
+    );
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 

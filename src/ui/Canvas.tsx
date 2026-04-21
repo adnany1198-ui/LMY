@@ -11,6 +11,8 @@ import {
   Viewport,
   zoomAt,
 } from "../utils/coordinates";
+import { SitePlanLayer } from "./SitePlanLayer";
+import type { SitePlanState } from "./siteplan-state";
 import type { Tool } from "./types";
 
 interface Props {
@@ -31,6 +33,8 @@ interface Props {
   onAddWall: (w: WallRect) => void;
   onDeleteSource: (id: string) => void;
   onDeleteWall: (id: string) => void;
+  sitePlan: SitePlanState;
+  segmentedMasks: { wall: Uint8Array; absorption: Uint8Array } | null;
 }
 
 interface DragState {
@@ -123,13 +127,17 @@ export function SimulationCanvas(props: Props) {
     simRef.current?.reset();
   }, [props.resetSignal]);
 
-  // Upload boundaries whenever walls or grid change
+  // Upload boundaries whenever walls, grid, or segmentation change
   useEffect(() => {
     const sim = simRef.current;
     if (!sim) return;
-    const mask = buildBoundaryMask(props.grid, props.walls);
+    const mask = buildBoundaryMask(props.grid, {
+      walls: props.walls,
+      wallMask: props.segmentedMasks?.wall ?? null,
+      absorptionMask: props.segmentedMasks?.absorption ?? null,
+    });
     sim.uploadBoundaries(mask);
-  }, [props.walls, props.grid]);
+  }, [props.walls, props.grid, props.segmentedMasks]);
 
   // Animation loop
   useEffect(() => {
@@ -390,6 +398,21 @@ export function SimulationCanvas(props: Props) {
         touchAction: "none",
       }}
     >
+      {/* Site plan background (if loaded) */}
+      {props.sitePlan.visible && (
+        <SitePlanLayer
+          imageUrl={props.sitePlan.imageUrl}
+          imageWidth={props.sitePlan.imageWidth}
+          imageHeight={props.sitePlan.imageHeight}
+          calibration={props.sitePlan.calibration}
+          originX={origin.x}
+          originY={origin.y}
+          widthPx={worldSize.width}
+          heightPx={worldSize.height}
+          opacity={props.sitePlan.opacity}
+        />
+      )}
+
       {/* Simulation canvas — rendered at grid resolution, stretched to world screen size */}
       <canvas
         ref={canvasRef}
