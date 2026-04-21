@@ -2,21 +2,23 @@ export const RENDER_FRAG = /* glsl */ `#version 300 es
 precision highp float;
 
 // Renders the pressure field as colour. Negative pressure maps to one
-// end of the palette, positive to the other, with zero crossing at
-// transparent black — so the site plan behind this layer shows through.
+// end of the palette, positive to the other, with a threshold + gamma
+// curve on alpha so low-amplitude cells are fully transparent and only
+// the wavefront peaks paint over the background.
 
 in vec2 v_uv;
 
 uniform sampler2D u_pressure;
 uniform sampler2D u_boundaries;
-uniform float u_gain;       // visual gain multiplier
-uniform int u_colormap;     // 0 = spectral, 1 = thermal, 2 = mono
-uniform float u_wall_alpha; // overlay alpha for wall cells
+uniform float u_gain;         // visual gain multiplier on pressure
+uniform int u_colormap;       // 0 spectral, 1 thermal, 2 mono, 3 dark
+uniform float u_wall_alpha;   // overlay alpha for wall cells
+uniform float u_alpha_threshold; // |p| below this -> fully transparent
+uniform float u_alpha_gamma;  // contrast curve on alpha (higher = sharper peaks)
 
 out vec4 fragColor;
 
 vec3 spectral(float t) {
-    // t in [-1, 1]: blue (negative) -> black (zero) -> magenta/white (positive)
     float a = clamp(-t, 0.0, 1.0);
     float b = clamp( t, 0.0, 1.0);
     vec3 neg = mix(vec3(0.0), vec3(0.15, 0.45, 1.0), a);
@@ -41,6 +43,18 @@ vec3 mono(float t) {
     return vec3(x);
 }
 
+// Black at zero, deep blue for negative, magenta/white for positive.
+// Darker than 'spectral' so the site plan reads clearly underneath.
+vec3 darkSpectrogram(float t) {
+    float a = clamp(-t, 0.0, 1.0);
+    float b = clamp( t, 0.0, 1.0);
+    vec3 neg = mix(vec3(0.0), vec3(0.05, 0.18, 0.55), a);
+    neg = mix(neg, vec3(0.25, 0.65, 1.0), pow(a, 2.4));
+    vec3 pos = mix(vec3(0.0), vec3(0.6, 0.05, 0.35), b);
+    pos = mix(pos, vec3(1.0, 0.6, 0.95), pow(b, 2.4));
+    return neg + pos;
+}
+
 void main() {
     float p = texture(u_pressure, v_uv).r * u_gain;
     float wall = texture(u_boundaries, v_uv).r;
@@ -50,11 +64,14 @@ void main() {
     vec3 colour;
     if (u_colormap == 1) colour = thermal(t);
     else if (u_colormap == 2) colour = mono(t);
+    else if (u_colormap == 3) colour = darkSpectrogram(t);
     else colour = spectral(t);
 
-    float alpha = clamp(abs(t), 0.0, 1.0);
-    // Slight floor so near-zero pressure still reads as faint wash
-    alpha = pow(alpha, 0.6);
+    float a = clamp(abs(t), 0.0, 1.0);
+    // Threshold knee: below -> 0, above -> remapped into [0,1]
+    float denom = max(1.0 - u_alpha_threshold, 1e-4);
+    float aNorm = clamp((a - u_alpha_threshold) / denom, 0.0, 1.0);
+    float alpha = pow(aNorm, max(u_alpha_gamma, 0.01));
 
     if (wall > 0.5) {
         fragColor = vec4(0.05, 0.05, 0.07, u_wall_alpha);

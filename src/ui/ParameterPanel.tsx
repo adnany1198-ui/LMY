@@ -14,6 +14,10 @@ interface Props {
   onColormapChange: (v: ColorMap) => void;
   wallAlpha: number;
   onWallAlphaChange: (v: number) => void;
+  alphaThreshold: number;
+  onAlphaThresholdChange: (v: number) => void;
+  alphaGamma: number;
+  onAlphaGammaChange: (v: number) => void;
   showGrid: boolean;
   onShowGridChange: (v: boolean) => void;
   selectedSource: Source | null;
@@ -84,10 +88,35 @@ export function ParameterPanel(p: Props) {
             value={p.colormap}
             onChange={(e) => p.onColormapChange(e.target.value as ColorMap)}
           >
+            <option value="dark">Dark spectrogram</option>
             <option value="spectral">Spectral (blue · magenta)</option>
             <option value="thermal">Thermal</option>
             <option value="mono">Monochrome</option>
           </select>
+        </label>
+
+        <label>
+          Alpha threshold: <span className="mono">{p.alphaThreshold.toFixed(2)}</span>
+          <input
+            type="range"
+            min={0}
+            max={0.6}
+            step={0.01}
+            value={p.alphaThreshold}
+            onChange={(e) => p.onAlphaThresholdChange(parseFloat(e.target.value))}
+          />
+        </label>
+
+        <label>
+          Peak contrast (γ): <span className="mono">{p.alphaGamma.toFixed(2)}</span>
+          <input
+            type="range"
+            min={0.3}
+            max={4}
+            step={0.05}
+            value={p.alphaGamma}
+            onChange={(e) => p.onAlphaGammaChange(parseFloat(e.target.value))}
+          />
         </label>
 
         <label>

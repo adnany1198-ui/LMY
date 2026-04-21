@@ -18,7 +18,7 @@ import { FULLSCREEN_VERT } from "./shaders/fullscreen.vert";
 import type { Grid } from "./Grid";
 import { Source, waveformId } from "./Source";
 
-export type ColorMap = "spectral" | "thermal" | "mono";
+export type ColorMap = "spectral" | "thermal" | "mono" | "dark";
 
 const MAX_SOURCES = 32;
 
@@ -120,6 +120,10 @@ export interface RenderOptions {
   gain: number;
   colormap: ColorMap;
   wallAlpha: number;
+  /** Below this |pressure| normalised value, output alpha = 0 */
+  alphaThreshold: number;
+  /** Gamma curve on alpha; higher = sharper peaks, flatter lows */
+  alphaGamma: number;
 }
 
 export class FDTDSimulation {
@@ -150,7 +154,7 @@ export class FDTDSimulation {
     const gl = canvas.getContext("webgl2", {
       antialias: false,
       premultipliedAlpha: false,
-      preserveDrawingBuffer: false,
+      preserveDrawingBuffer: true,
     });
     if (!gl) throw new Error("WebGL2 is not available in this browser.");
     if (!gl.getExtension("EXT_color_buffer_float")) {
@@ -371,9 +375,21 @@ export class FDTDSimulation {
     gl.uniform1i(gl.getUniformLocation(this.renderProgram, "u_boundaries"), 1);
 
     gl.uniform1f(gl.getUniformLocation(this.renderProgram, "u_gain"), opts.gain);
-    const cmap = opts.colormap === "thermal" ? 1 : opts.colormap === "mono" ? 2 : 0;
+    const cmap =
+      opts.colormap === "thermal"
+        ? 1
+        : opts.colormap === "mono"
+          ? 2
+          : opts.colormap === "dark"
+            ? 3
+            : 0;
     gl.uniform1i(gl.getUniformLocation(this.renderProgram, "u_colormap"), cmap);
     gl.uniform1f(gl.getUniformLocation(this.renderProgram, "u_wall_alpha"), opts.wallAlpha);
+    gl.uniform1f(
+      gl.getUniformLocation(this.renderProgram, "u_alpha_threshold"),
+      opts.alphaThreshold,
+    );
+    gl.uniform1f(gl.getUniformLocation(this.renderProgram, "u_alpha_gamma"), opts.alphaGamma);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.disable(gl.BLEND);

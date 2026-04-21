@@ -26,8 +26,11 @@ interface Props {
   gain: number;
   colormap: ColorMap;
   wallAlpha: number;
+  alphaThreshold: number;
+  alphaGamma: number;
   showGrid: boolean;
   resetSignal: number;
+  captureRef: React.MutableRefObject<null | (() => void)>;
   onAddSource: (xMeters: number, yMeters: number) => void;
   onSelectSource: (id: string | null) => void;
   onAddWall: (w: WallRect) => void;
@@ -139,6 +142,39 @@ export function SimulationCanvas(props: Props) {
     sim.uploadBoundaries(mask);
   }, [props.walls, props.grid, props.segmentedMasks]);
 
+  // Register snapshot capture function
+  useEffect(() => {
+    props.captureRef.current = () => {
+      const canvas = canvasRef.current;
+      const sim = simRef.current;
+      if (!canvas || !sim) return;
+      // Render fresh with current options right before reading
+      const p = propsRef.current;
+      sim.render(canvas.width, canvas.height, {
+        gain: p.gain,
+        colormap: p.colormap,
+        wallAlpha: p.wallAlpha,
+        alphaThreshold: p.alphaThreshold,
+        alphaGamma: p.alphaGamma,
+      });
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const ts = new Date().toISOString().replace(/[:.]/g, "-");
+        a.href = url;
+        a.download = `acoustic-${ts}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      }, "image/png");
+    };
+    return () => {
+      props.captureRef.current = null;
+    };
+  }, [props.captureRef]);
+
   // Animation loop
   useEffect(() => {
     let lastFpsT = performance.now();
@@ -158,6 +194,8 @@ export function SimulationCanvas(props: Props) {
           gain: p.gain,
           colormap: p.colormap,
           wallAlpha: p.wallAlpha,
+          alphaThreshold: p.alphaThreshold,
+          alphaGamma: p.alphaGamma,
         });
       }
 

@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import { ImageCropBox } from "./ImageCropBox";
 import type { SitePlanCalibration, SitePlanState } from "./siteplan-state";
 
 interface Props {
@@ -76,7 +77,7 @@ export function SitePlanPanel(p: Props) {
             />
           </label>
 
-          {cal && (
+          {cal && p.state.imageUrl && (
             <div
               style={{
                 border: "1px solid var(--border)",
@@ -94,51 +95,63 @@ export function SitePlanPanel(p: Props) {
                   color: "var(--text-faint)",
                 }}
               >
-                Calibration (image px → world)
+                Crop to world domain
               </div>
               <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                Crop the image to the rect that corresponds to the 0..W × 0..H m
-                domain. Exclude the legend panel.
+                Drag the rectangle or its handles to crop the image to the
+                0..{Math.round(p.state.imageWidth && p.state.imageHeight ? 300 : 0)} m
+                domain. Exclude the legend and margins.
               </div>
+              <ImageCropBox
+                imageUrl={p.state.imageUrl}
+                imageWidth={p.state.imageWidth}
+                imageHeight={p.state.imageHeight}
+                calibration={cal}
+                onChange={p.onCalibrationChange}
+              />
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 6,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 11,
+                  fontFamily: "var(--mono)",
+                  color: "var(--text-dim)",
                 }}
               >
-                <label>
-                  x0
-                  <input
-                    type="number"
-                    value={cal.x0}
-                    onChange={(e) => updateCal({ x0: parseInt(e.target.value || "0", 10) })}
-                  />
-                </label>
-                <label>
-                  y0
-                  <input
-                    type="number"
-                    value={cal.y0}
-                    onChange={(e) => updateCal({ y0: parseInt(e.target.value || "0", 10) })}
-                  />
-                </label>
-                <label>
-                  x1
-                  <input
-                    type="number"
-                    value={cal.x1}
-                    onChange={(e) => updateCal({ x1: parseInt(e.target.value || "0", 10) })}
-                  />
-                </label>
-                <label>
-                  y1
-                  <input
-                    type="number"
-                    value={cal.y1}
-                    onChange={(e) => updateCal({ y1: parseInt(e.target.value || "0", 10) })}
-                  />
-                </label>
+                <span>
+                  {cal.x0}, {cal.y0}
+                </span>
+                <span>
+                  {cal.x1}, {cal.y1}
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  style={{ flex: 1, fontSize: 11 }}
+                  onClick={() =>
+                    updateCal({
+                      x0: 0,
+                      y0: 0,
+                      x1: p.state.imageWidth,
+                      y1: p.state.imageHeight,
+                    })
+                  }
+                >
+                  Full image
+                </button>
+                <button
+                  style={{ flex: 1, fontSize: 11 }}
+                  onClick={() =>
+                    updateCal({
+                      x0: 0,
+                      y0: 0,
+                      x1: Math.round(p.state.imageWidth * 0.72),
+                      y1: p.state.imageHeight,
+                    })
+                  }
+                >
+                  Drop legend
+                </button>
               </div>
             </div>
           )}

@@ -47,10 +47,13 @@ export function App() {
 
   const [running, setRunning] = useState(true);
   const [stepsPerFrame, setStepsPerFrame] = useState(6);
-  const [gain, setGain] = useState(1.4);
-  const [colormap, setColormap] = useState<ColorMap>("spectral");
+  const [gain, setGain] = useState(1.8);
+  const [colormap, setColormap] = useState<ColorMap>("dark");
   const [wallAlpha, setWallAlpha] = useState(0.0);
+  const [alphaThreshold, setAlphaThreshold] = useState(0.15);
+  const [alphaGamma, setAlphaGamma] = useState(1.8);
   const [showGrid, setShowGrid] = useState(false);
+  const captureRef = useRef<null | (() => void)>(null);
 
   // Site plan state
   const [sitePlan, setSitePlan] = useState<SitePlanState>(emptySitePlanState);
@@ -221,6 +224,7 @@ export function App() {
         </button>
         <button onClick={handleReset}>↻ Reset field</button>
         <button onClick={handleClear}>Clear all</button>
+        <button onClick={() => captureRef.current?.()}>📸 Snapshot PNG</button>
       </header>
 
       <ToolsPalette
@@ -245,6 +249,8 @@ export function App() {
         gain={gain}
         colormap={colormap}
         wallAlpha={wallAlpha}
+        alphaThreshold={alphaThreshold}
+        alphaGamma={alphaGamma}
         showGrid={showGrid}
         resetSignal={resetSignal}
         onAddSource={addSource}
@@ -254,6 +260,7 @@ export function App() {
         onDeleteWall={deleteWall}
         sitePlan={sitePlan}
         segmentedMasks={segmentedMasks}
+        captureRef={captureRef}
       />
 
       <div style={{ gridRow: "2", borderLeft: "1px solid var(--border)", overflow: "auto" }}>
@@ -292,6 +299,10 @@ export function App() {
           onColormapChange={setColormap}
           wallAlpha={wallAlpha}
           onWallAlphaChange={setWallAlpha}
+          alphaThreshold={alphaThreshold}
+          onAlphaThresholdChange={setAlphaThreshold}
+          alphaGamma={alphaGamma}
+          onAlphaGammaChange={setAlphaGamma}
           showGrid={showGrid}
           onShowGridChange={setShowGrid}
           selectedSource={selectedSource}
