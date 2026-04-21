@@ -19,6 +19,25 @@ import type { Grid } from "./Grid";
 
 export type PixelClass = "wall" | "water" | "tree" | "ground" | "air";
 
+export const CLASS_CODE: Record<PixelClass, number> = {
+  air: 0,
+  ground: 1,
+  tree: 2,
+  water: 3,
+  wall: 4,
+};
+
+export const CODE_CLASS: PixelClass[] = ["air", "ground", "tree", "water", "wall"];
+
+/** RGBA used when painting the segmentation preview overlay. */
+export const CLASS_PREVIEW_RGBA: Record<PixelClass, [number, number, number, number]> = {
+  air: [0, 0, 0, 0],
+  ground: [200, 170, 120, 110],
+  tree: [70, 170, 90, 180],
+  water: [50, 140, 230, 220],
+  wall: [230, 230, 230, 230],
+};
+
 export interface SitePlanCalibration {
   /**
    * Axis-aligned rectangle within the image (pixel coords) that
@@ -34,6 +53,8 @@ export interface SitePlanCalibration {
 export interface SegmentationResult {
   wallMask: Uint8Array; // 255 = wall
   absorptionMask: Uint8Array; // 0..255
+  /** Per-cell class code (see CLASS_CODE). Same length as wallMask. */
+  classMap: Uint8Array;
   /** Per-class pixel counts (useful for UI feedback) */
   counts: Record<PixelClass, number>;
 }
@@ -59,15 +80,15 @@ export interface SegmentationThresholds {
 export const DEFAULT_THRESHOLDS: SegmentationThresholds = {
   greyMaxSaturation: 0.18,
   wallMinLight: 0.35,
-  wallMaxLight: 0.8,
+  wallMaxLight: 0.82,
   waterHueMin: 180,
   waterHueMax: 250,
   waterMinSaturation: 0.15,
-  treeHueMin: 60,
-  treeHueMax: 170,
-  treeMinSaturation: 0.12,
-  absorbTree: 0.55,
-  absorbGround: 0.1,
+  treeHueMin: 70,
+  treeHueMax: 165,
+  treeMinSaturation: 0.14,
+  absorbTree: 0.4, // matches the user-specified tree absorption
+  absorbGround: 0, // open ground / paths are treated as air
 };
 
 /** Convert sRGB (0..255) to HSL with h in degrees, s/l in 0..1. */
@@ -140,8 +161,10 @@ export function segmentSitePlan(
   calibration: SitePlanCalibration,
   thresholds: SegmentationThresholds = DEFAULT_THRESHOLDS,
 ): SegmentationResult {
-  const wallMask = new Uint8Array(grid.width * grid.height);
-  const absorptionMask = new Uint8Array(grid.width * grid.height);
+  const N = grid.width * grid.height;
+  const wallMask = new Uint8Array(N);
+  const absorptionMask = new Uint8Array(N);
+  const classMap = new Uint8Array(N);
   const counts: Record<PixelClass, number> = {
     wall: 0,
     water: 0,
@@ -154,7 +177,7 @@ export function segmentSitePlan(
   const regionW = x1 - x0;
   const regionH = y1 - y0;
   if (regionW <= 0 || regionH <= 0) {
-    return { wallMask, absorptionMask, counts };
+    return { wallMask, absorptionMask, classMap, counts };
   }
 
   const pxPerCellX = regionW / grid.width;
@@ -210,6 +233,7 @@ export function segmentSitePlan(
       counts[winner] += 1;
 
       const cellIdx = gy * grid.width + gx;
+      classMap[cellIdx] = CLASS_CODE[winner];
       if (winner === "wall" || winner === "water") {
         wallMask[cellIdx] = 255;
         absorptionMask[cellIdx] = 0;
@@ -223,7 +247,7 @@ export function segmentSitePlan(
     }
   }
 
-  return { wallMask, absorptionMask, counts };
+  return { wallMask, absorptionMask, classMap, counts };
 }
 
 /** Load an image URL/file into a canvas and return its ImageData. */

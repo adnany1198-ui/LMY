@@ -15,29 +15,50 @@ import { SitePlanPanel } from "./SitePlanPanel";
 import { emptySitePlanState, SitePlanCalibration, SitePlanState } from "./siteplan-state";
 import type { Tool } from "./types";
 
-// Default site envelope: 300m × 200m (Serranova approximate extents).
-// dx = 0.5m gives a 600×400 grid — comfortably real-time and accurate
-// to ~140 Hz (5 cells per wavelength at c=343).
-const DEFAULT_SITE = {
-  widthMeters: 300,
-  heightMeters: 200,
-  dxMeters: 0.5,
-  courant: 0.5,
-  speedOfSound: SPEED_OF_SOUND_MPS,
-};
+// Default site envelope: width in metres is the "domain scale". Height is
+// derived from the cropped site-plan aspect ratio once an image is loaded,
+// so the simulation grid always matches the plan's shape. Before a plan
+// is loaded we fall back to a 3:2 box.
+const DEFAULT_DOMAIN_WIDTH_METERS = 300;
+const FALLBACK_ASPECT = 1.5; // width / height
 
 export function App() {
-  const [dxMeters, setDxMeters] = useState(DEFAULT_SITE.dxMeters);
+  const [dxMeters, setDxMeters] = useState(0.5);
+  const [domainWidthMeters, setDomainWidthMeters] = useState(DEFAULT_DOMAIN_WIDTH_METERS);
+
+  // Site plan state
+  const [sitePlan, setSitePlan] = useState<SitePlanState>(emptySitePlanState);
+  const imageDataRef = useRef<ImageData | null>(null);
+  const [segmentedMasks, setSegmentedMasks] = useState<{
+    wall: Uint8Array;
+    absorption: Uint8Array;
+    classMap: Uint8Array;
+  } | null>(null);
+  const [showSegmentationOverlay, setShowSegmentationOverlay] = useState(true);
+  const [segmentationOpacity, setSegmentationOpacity] = useState(0.55);
+  const [segmenting, setSegmenting] = useState(false);
+
+  // Derive world dimensions from the crop aspect (width/height of the
+  // calibration rect in image pixels). If no crop yet, fall back.
+  const cropAspect = useMemo(() => {
+    const cal = sitePlan.calibration;
+    if (!cal) return FALLBACK_ASPECT;
+    const w = cal.x1 - cal.x0;
+    const h = cal.y1 - cal.y0;
+    if (w <= 0 || h <= 0) return FALLBACK_ASPECT;
+    return w / h;
+  }, [sitePlan.calibration]);
+
   const grid = useMemo(
     () =>
       new Grid({
-        widthMeters: DEFAULT_SITE.widthMeters,
-        heightMeters: DEFAULT_SITE.heightMeters,
+        widthMeters: domainWidthMeters,
+        heightMeters: domainWidthMeters / cropAspect,
         dxMeters,
-        courant: DEFAULT_SITE.courant,
-        speedOfSound: DEFAULT_SITE.speedOfSound,
+        courant: 0.5,
+        speedOfSound: SPEED_OF_SOUND_MPS,
       }),
-    [dxMeters],
+    [dxMeters, domainWidthMeters, cropAspect],
   );
 
   const [tool, setTool] = useState<Tool>("speaker");
@@ -54,15 +75,6 @@ export function App() {
   const [alphaGamma, setAlphaGamma] = useState(1.8);
   const [showGrid, setShowGrid] = useState(false);
   const captureRef = useRef<null | (() => void)>(null);
-
-  // Site plan state
-  const [sitePlan, setSitePlan] = useState<SitePlanState>(emptySitePlanState);
-  const imageDataRef = useRef<ImageData | null>(null);
-  const [segmentedMasks, setSegmentedMasks] = useState<{
-    wall: Uint8Array;
-    absorption: Uint8Array;
-  } | null>(null);
-  const [segmenting, setSegmenting] = useState(false);
 
   const resetKey = useRef(0);
   const [resetSignal, setResetSignal] = useState(0);
@@ -168,19 +180,25 @@ export function App() {
     await new Promise((r) => requestAnimationFrame(() => r(null)));
     try {
       const result = segmentSitePlan(img, grid, cal, DEFAULT_THRESHOLDS);
-      setSegmentedMasks({ wall: result.wallMask, absorption: result.absorptionMask });
+      setSegmentedMasks({
+        wall: result.wallMask,
+        absorption: result.absorptionMask,
+        classMap: result.classMap,
+      });
       const total = grid.width * grid.height;
       const pct = (n: number) => ((n / total) * 100).toFixed(1) + "%";
       setSitePlan((prev) => ({
         ...prev,
         hasSegmentation: true,
         segmentationSummary: [
-          `wall ${pct(result.counts.wall + result.counts.water)}`,
+          `wall ${pct(result.counts.wall)}`,
+          `water ${pct(result.counts.water)}`,
           `tree ${pct(result.counts.tree)}`,
           `ground ${pct(result.counts.ground)}`,
           `air ${pct(result.counts.air)}`,
         ].join(" · "),
       }));
+      setShowSegmentationOverlay(true);
     } finally {
       setSegmenting(false);
     }
@@ -260,6 +278,8 @@ export function App() {
         onDeleteWall={deleteWall}
         sitePlan={sitePlan}
         segmentedMasks={segmentedMasks}
+        showSegmentationOverlay={showSegmentationOverlay}
+        segmentationOpacity={segmentationOpacity}
         captureRef={captureRef}
       />
 
@@ -285,6 +305,13 @@ export function App() {
             onAutoSegment={handleAutoSegment}
             onClearSegmentation={handleClearSegmentation}
             segmenting={segmenting}
+            domainWidthMeters={domainWidthMeters}
+            onDomainWidthChange={setDomainWidthMeters}
+            cropAspect={cropAspect}
+            showSegmentationOverlay={showSegmentationOverlay}
+            onShowSegmentationOverlayChange={setShowSegmentationOverlay}
+            segmentationOpacity={segmentationOpacity}
+            onSegmentationOpacityChange={setSegmentationOpacity}
           />
         </div>
         <ParameterPanel

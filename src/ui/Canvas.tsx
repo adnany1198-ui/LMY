@@ -11,6 +11,7 @@ import {
   Viewport,
   zoomAt,
 } from "../utils/coordinates";
+import { SegmentationOverlay } from "./SegmentationOverlay";
 import { SitePlanLayer } from "./SitePlanLayer";
 import type { SitePlanState } from "./siteplan-state";
 import type { Tool } from "./types";
@@ -37,7 +38,9 @@ interface Props {
   onDeleteSource: (id: string) => void;
   onDeleteWall: (id: string) => void;
   sitePlan: SitePlanState;
-  segmentedMasks: { wall: Uint8Array; absorption: Uint8Array } | null;
+  segmentedMasks: { wall: Uint8Array; absorption: Uint8Array; classMap: Uint8Array } | null;
+  showSegmentationOverlay: boolean;
+  segmentationOpacity: number;
 }
 
 interface DragState {
@@ -448,6 +451,21 @@ export function SimulationCanvas(props: Props) {
           widthPx={worldSize.width}
           heightPx={worldSize.height}
           opacity={props.sitePlan.opacity}
+        />
+      )}
+
+      {/* Segmentation overlay (if computed) — sits on top of the site plan so
+          the user can see how pixels mapped to wall/water/tree/ground. */}
+      {props.showSegmentationOverlay && props.segmentedMasks && (
+        <SegmentationOverlay
+          width={props.grid.width}
+          height={props.grid.height}
+          classMap={props.segmentedMasks.classMap}
+          originX={origin.x}
+          originY={origin.y}
+          widthPx={worldSize.width}
+          heightPx={worldSize.height}
+          opacity={props.segmentationOpacity}
         />
       )}
 

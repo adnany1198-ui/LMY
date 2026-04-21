@@ -11,6 +11,13 @@ interface Props {
   onAutoSegment: () => void;
   onClearSegmentation: () => void;
   segmenting: boolean;
+  domainWidthMeters: number;
+  onDomainWidthChange: (v: number) => void;
+  cropAspect: number;
+  showSegmentationOverlay: boolean;
+  onShowSegmentationOverlayChange: (v: boolean) => void;
+  segmentationOpacity: number;
+  onSegmentationOpacityChange: (v: number) => void;
 }
 
 /**
@@ -156,6 +163,42 @@ export function SitePlanPanel(p: Props) {
             </div>
           )}
 
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              padding: 8,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                color: "var(--text-faint)",
+              }}
+            >
+              Domain scale
+            </div>
+            <label>
+              Width: <span className="mono">{p.domainWidthMeters} m</span>
+              <input
+                type="range"
+                min={20}
+                max={800}
+                step={5}
+                value={p.domainWidthMeters}
+                onChange={(e) => p.onDomainWidthChange(parseFloat(e.target.value))}
+              />
+            </label>
+            <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+              Height (from crop): {(p.domainWidthMeters / p.cropAspect).toFixed(1)} m · aspect{" "}
+              {p.cropAspect.toFixed(3)}
+            </div>
+          </div>
+
           <button onClick={p.onAutoSegment} disabled={p.segmenting} className="active">
             {p.segmenting ? "Segmenting…" : "Auto-segment → boundaries"}
           </button>
@@ -174,10 +217,65 @@ export function SitePlanPanel(p: Props) {
           )}
 
           {p.state.hasSegmentation && (
-            <button onClick={p.onClearSegmentation}>Clear segmentation</button>
+            <>
+              <label style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={p.showSegmentationOverlay}
+                  onChange={(e) => p.onShowSegmentationOverlayChange(e.target.checked)}
+                />
+                <span>Show segmentation overlay</span>
+              </label>
+              <label>
+                Overlay opacity:{" "}
+                <span className="mono">{p.segmentationOpacity.toFixed(2)}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={p.segmentationOpacity}
+                  onChange={(e) =>
+                    p.onSegmentationOpacityChange(parseFloat(e.target.value))
+                  }
+                />
+              </label>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 4,
+                  fontSize: 11,
+                  fontFamily: "var(--mono)",
+                  color: "var(--text-dim)",
+                }}
+              >
+                <LegendSwatch color="rgb(230,230,230)" label="wall" />
+                <LegendSwatch color="rgb(50,140,230)" label="water" />
+                <LegendSwatch color="rgb(70,170,90)" label="tree" />
+                <LegendSwatch color="rgb(200,170,120)" label="ground" />
+              </div>
+              <button onClick={p.onClearSegmentation}>Clear segmentation</button>
+            </>
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function LegendSwatch({ color, label }: { color: string; label: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <span
+        style={{
+          width: 10,
+          height: 10,
+          background: color,
+          border: "1px solid var(--border)",
+        }}
+      />
+      <span>{label}</span>
     </div>
   );
 }
