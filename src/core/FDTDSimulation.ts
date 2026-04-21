@@ -1,26 +1,32 @@
 /**
- * FDTDSimulation — GPU-resident 2D acoustic wave solver.
+ * FDTDSimulation — GPU-resident 2D acoustic wave solver with one pressure
+ * field per speaker.
  *
- * Pipeline per timestep:
- *   1. fdtdProgram: read p(t), p(t-1), boundaries → write p(t+1) into temp texture.
- *   2. sourceProgram: read temp → write temp (adds source excitation) — ping-ponged
- *      into the next slot.
- *   3. Rotate slots so that what was p(t+1) becomes the new p(t).
+ * Each source gets its own three-slot ping-pong of RGBA16F textures. Because
+ * the linear wave equation is identical for every channel, the summed field
+ * reproduces the classical single-channel FDTD; keeping them separate just
+ * gives the renderer per-source intensities to paint in distinct colours.
  *
- * State textures use RGBA16F (broadly supported renderable float format with
- * the EXT_color_buffer_float extension). Pressure lives in the red channel.
+ * Per timestep, for each channel:
+ *   1. fdtdProgram   : p(t-1), p(t), boundaries → p(t+1)                (next slot)
+ *   2. sourceProgram : p(t+1) + this channel's source term              (prev slot)
+ * After all channels step, slot indices rotate so the source-injected slot
+ * becomes the new "current".
+ *
+ * Boundaries (walls, absorption) are shared across channels — speakers see
+ * the same world.
  */
 
 import { FDTD_STEP_FRAG } from "./shaders/fdtd-step.frag";
 import { SOURCE_INJECT_FRAG } from "./shaders/source-inject.frag";
-import { RENDER_FRAG } from "./shaders/render.frag";
+import { COMPOSITE_FRAG } from "./shaders/composite.frag";
 import { FULLSCREEN_VERT } from "./shaders/fullscreen.vert";
 import type { Grid } from "./Grid";
 import { Source, waveformId } from "./Source";
 
-export type ColorMap = "spectral" | "thermal" | "mono" | "dark";
+export type ScaleMode = "linear" | "db";
 
-const MAX_SOURCES = 32;
+export const MAX_CHANNELS = 8;
 
 function compileShader(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
   const sh = gl.createShader(type);
@@ -104,26 +110,28 @@ function createBoundaryTexture(gl: WebGL2RenderingContext, w: number, h: number)
   return tex;
 }
 
+interface Channel {
+  sourceId: string;
+  state: [StateTexture, StateTexture, StateTexture];
+}
+
 export interface FDTDSimulationOptions {
   grid: Grid;
-  /** global per-step damping (closer to 1.0 = less damping) */
   damping?: number;
-  /** absorbing edge layer width in cells */
   pmlWidth?: number;
-  /** absorbing edge layer max extra damping */
   pmlStrength?: number;
-  /** global gain on per-cell absorption map (boundary.g) */
   absorbStrength?: number;
 }
 
 export interface RenderOptions {
   gain: number;
-  colormap: ColorMap;
   wallAlpha: number;
-  /** Below this |pressure| normalised value, output alpha = 0 */
   alphaThreshold: number;
-  /** Gamma curve on alpha; higher = sharper peaks, flatter lows */
-  alphaGamma: number;
+  /** Visibility curve. >1 = lift quiet wavefronts, <1 = isolate peaks only. */
+  gamma: number;
+  scaleMode: ScaleMode;
+  /** dB value at which intensity falls to 0 in dB mode (e.g. -60). */
+  dbFloor: number;
 }
 
 export class FDTDSimulation {
@@ -133,10 +141,13 @@ export class FDTDSimulation {
   private readonly vao: WebGLVertexArrayObject;
   private readonly fdtdProgram: WebGLProgram;
   private readonly sourceProgram: WebGLProgram;
-  private readonly renderProgram: WebGLProgram;
+  private readonly compositeProgram: WebGLProgram;
 
-  // Three state slots cycled each step: prev → curr → next → (new prev)
-  private state: [StateTexture, StateTexture, StateTexture];
+  private channels: Channel[] = [];
+  /** Fallback texture bound to unused composite samplers so drivers don't complain. */
+  private dummyTexture: WebGLTexture;
+
+  // Slot indices are shared across channels — every channel advances together.
   private idxPrev = 0;
   private idxCurr = 1;
   private idxNext = 2;
@@ -183,31 +194,38 @@ export class FDTDSimulation {
       vs,
       compileShader(gl, gl.FRAGMENT_SHADER, SOURCE_INJECT_FRAG),
     );
-    this.renderProgram = linkProgram(
+    this.compositeProgram = linkProgram(
       gl,
       vs,
-      compileShader(gl, gl.FRAGMENT_SHADER, RENDER_FRAG),
+      compileShader(gl, gl.FRAGMENT_SHADER, COMPOSITE_FRAG),
     );
 
-    this.state = [
-      createStateTexture(gl, opts.grid.width, opts.grid.height),
-      createStateTexture(gl, opts.grid.width, opts.grid.height),
-      createStateTexture(gl, opts.grid.width, opts.grid.height),
-    ];
-
     this.boundaryTex = createBoundaryTexture(gl, opts.grid.width, opts.grid.height);
+
+    // Tiny all-zero RGBA16F texture used to fill unused composite samplers.
+    const dummy = gl.createTexture();
+    if (!dummy) throw new Error("createTexture failed");
+    gl.bindTexture(gl.TEXTURE_2D, dummy);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 1, 1, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    this.dummyTexture = dummy;
   }
 
   dispose() {
     const gl = this.gl;
-    for (const s of this.state) {
-      gl.deleteTexture(s.texture);
-      gl.deleteFramebuffer(s.framebuffer);
+    for (const ch of this.channels) {
+      for (const s of ch.state) {
+        gl.deleteTexture(s.texture);
+        gl.deleteFramebuffer(s.framebuffer);
+      }
     }
+    this.channels = [];
     gl.deleteTexture(this.boundaryTex);
+    gl.deleteTexture(this.dummyTexture);
     gl.deleteProgram(this.fdtdProgram);
     gl.deleteProgram(this.sourceProgram);
-    gl.deleteProgram(this.renderProgram);
+    gl.deleteProgram(this.compositeProgram);
     gl.deleteVertexArray(this.vao);
   }
 
@@ -219,15 +237,17 @@ export class FDTDSimulation {
     return this._stepCount;
   }
 
-  /** Wipe the pressure field and reset simulation time. */
+  /** Wipe all pressure fields. */
   reset() {
     const gl = this.gl;
     this._simTime = 0;
     this._stepCount = 0;
-    for (const s of this.state) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, s.framebuffer);
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+    for (const ch of this.channels) {
+      for (const s of ch.state) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, s.framebuffer);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      }
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
@@ -261,8 +281,48 @@ export class FDTDSimulation {
     this.absorbStrength = v;
   }
 
-  /** Run a single FDTD timestep plus source injection. */
+  /** Allocate a channel for each source id, disposing channels whose source
+   *  is gone. Caps at MAX_CHANNELS — extra sources fall off the end. */
+  private syncChannels(sources: readonly Source[]) {
+    const gl = this.gl;
+    const keep = new Set<string>();
+    const cap = sources.slice(0, MAX_CHANNELS);
+    for (const s of cap) keep.add(s.id);
+
+    // Drop channels whose source no longer exists
+    this.channels = this.channels.filter((ch) => {
+      if (keep.has(ch.sourceId)) return true;
+      for (const t of ch.state) {
+        gl.deleteTexture(t.texture);
+        gl.deleteFramebuffer(t.framebuffer);
+      }
+      return false;
+    });
+
+    // Add channels for new sources, preserving the source order for colour stability
+    const existing = new Map(this.channels.map((ch) => [ch.sourceId, ch]));
+    const next: Channel[] = [];
+    for (const s of cap) {
+      const prior = existing.get(s.id);
+      if (prior) {
+        next.push(prior);
+      } else {
+        next.push({
+          sourceId: s.id,
+          state: [
+            createStateTexture(gl, this.grid.width, this.grid.height),
+            createStateTexture(gl, this.grid.width, this.grid.height),
+            createStateTexture(gl, this.grid.width, this.grid.height),
+          ],
+        });
+      }
+    }
+    this.channels = next;
+  }
+
+  /** Run a single FDTD timestep for every active channel. */
   step(sources: readonly Source[]) {
+    this.syncChannels(sources);
     const gl = this.gl;
     const { width, height } = this.grid;
 
@@ -271,16 +331,40 @@ export class FDTDSimulation {
     gl.disable(gl.BLEND);
     gl.disable(gl.DEPTH_TEST);
 
-    // --- 1) FDTD step: p(t-1), p(t) -> p(t+1) ---
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.state[this.idxNext].framebuffer);
+    for (let i = 0; i < this.channels.length; i++) {
+      const ch = this.channels[i];
+      const src = sources[i];
+      this.stepChannel(ch, src);
+    }
+
+    // Rotate slots so the source-injected slot becomes the new "current".
+    const newCurr = this.idxPrev;
+    const newPrev = this.idxCurr;
+    const newNext = this.idxNext;
+    this.idxPrev = newPrev;
+    this.idxCurr = newCurr;
+    this.idxNext = newNext;
+
+    this._simTime += this.grid.dt;
+    this._stepCount += 1;
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  private stepChannel(ch: Channel, src: Source) {
+    const gl = this.gl;
+    const { width, height } = this.grid;
+
+    // --- 1) FDTD step: p(t-1), p(t) -> p(t+1) into idxNext ---
+    gl.bindFramebuffer(gl.FRAMEBUFFER, ch.state[this.idxNext].framebuffer);
     gl.useProgram(this.fdtdProgram);
 
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.state[this.idxCurr].texture);
+    gl.bindTexture(gl.TEXTURE_2D, ch.state[this.idxCurr].texture);
     gl.uniform1i(gl.getUniformLocation(this.fdtdProgram, "u_pressure_current"), 0);
 
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.state[this.idxPrev].texture);
+    gl.bindTexture(gl.TEXTURE_2D, ch.state[this.idxPrev].texture);
     gl.uniform1i(gl.getUniformLocation(this.fdtdProgram, "u_pressure_previous"), 1);
 
     gl.activeTexture(gl.TEXTURE2);
@@ -300,13 +384,12 @@ export class FDTDSimulation {
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    // --- 2) Source injection: read from next, write into prev (now free) ---
-    const injectTarget = this.state[this.idxPrev]; // will be recycled as new "next"
-    gl.bindFramebuffer(gl.FRAMEBUFFER, injectTarget.framebuffer);
+    // --- 2) Source injection: read from next, write into prev slot ---
+    gl.bindFramebuffer(gl.FRAMEBUFFER, ch.state[this.idxPrev].framebuffer);
     gl.useProgram(this.sourceProgram);
 
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.state[this.idxNext].texture);
+    gl.bindTexture(gl.TEXTURE_2D, ch.state[this.idxNext].texture);
     gl.uniform1i(gl.getUniformLocation(this.sourceProgram, "u_pressure"), 0);
 
     gl.activeTexture(gl.TEXTURE1);
@@ -316,48 +399,33 @@ export class FDTDSimulation {
     gl.uniform2f(gl.getUniformLocation(this.sourceProgram, "u_resolution"), width, height);
     gl.uniform1f(gl.getUniformLocation(this.sourceProgram, "u_time"), this._simTime);
 
-    const active = sources.filter((s) => s.enabled).slice(0, MAX_SOURCES);
-    const sourceData = new Float32Array(MAX_SOURCES * 4);
-    const signalData = new Float32Array(MAX_SOURCES * 4);
-    for (let i = 0; i < active.length; i++) {
-      const s = active[i];
-      const cell = this.grid.metersToCell(s.xMeters, s.yMeters);
-      const radiusCells = Math.max(1, s.radiusMeters / this.grid.dx);
-      sourceData[i * 4 + 0] = cell.x;
-      sourceData[i * 4 + 1] = cell.y;
-      sourceData[i * 4 + 2] = s.amplitude;
-      sourceData[i * 4 + 3] = radiusCells;
-      signalData[i * 4 + 0] = s.frequencyHz;
-      signalData[i * 4 + 1] = s.phaseRad;
-      signalData[i * 4 + 2] = waveformId(s.waveform);
-      signalData[i * 4 + 3] = i * 7.919; // per-source noise seed
-    }
-    gl.uniform1i(gl.getUniformLocation(this.sourceProgram, "u_source_count"), active.length);
+    const sourceData = new Float32Array(4);
+    const signalData = new Float32Array(4);
+    const activeAmp = src.enabled ? src.amplitude : 0;
+    const cell = this.grid.metersToCell(src.xMeters, src.yMeters);
+    const radiusCells = Math.max(1, src.radiusMeters / this.grid.dx);
+    sourceData[0] = cell.x;
+    sourceData[1] = cell.y;
+    sourceData[2] = activeAmp;
+    sourceData[3] = radiusCells;
+    signalData[0] = src.frequencyHz;
+    signalData[1] = src.phaseRad;
+    signalData[2] = waveformId(src.waveform);
+    signalData[3] = 0; // per-source noise seed not needed when one channel per source
+    gl.uniform1i(gl.getUniformLocation(this.sourceProgram, "u_source_count"), 1);
     gl.uniform4fv(gl.getUniformLocation(this.sourceProgram, "u_sources"), sourceData);
     gl.uniform4fv(gl.getUniformLocation(this.sourceProgram, "u_source_signal"), signalData);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-
-    // --- 3) Rotate slots ---
-    // Before this step: [prev, curr, next] = [P, C, N]
-    // FDTD wrote into N. Injection wrote into P (using N as input).
-    // So the actual new current state (with sources) lives in injectTarget (slot idxPrev).
-    // New curr = injectTarget (idxPrev), new prev = curr (idxCurr), free slot = next (idxNext).
-    const newCurr = this.idxPrev;
-    const newPrev = this.idxCurr;
-    const newNext = this.idxNext;
-    this.idxPrev = newPrev;
-    this.idxCurr = newCurr;
-    this.idxNext = newNext;
-
-    this._simTime += this.grid.dt;
-    this._stepCount += 1;
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
-  /** Render the current pressure field into the default framebuffer. */
-  render(canvasWidth: number, canvasHeight: number, opts: RenderOptions) {
+  /** Composite all channels into the default framebuffer. */
+  render(
+    canvasWidth: number,
+    canvasHeight: number,
+    sources: readonly Source[],
+    opts: RenderOptions,
+  ) {
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, canvasWidth, canvasHeight);
@@ -368,32 +436,49 @@ export class FDTDSimulation {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
     gl.bindVertexArray(this.vao);
-    gl.useProgram(this.renderProgram);
+    gl.useProgram(this.compositeProgram);
 
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.state[this.idxCurr].texture);
-    gl.uniform1i(gl.getUniformLocation(this.renderProgram, "u_pressure"), 0);
+    const count = Math.min(this.channels.length, MAX_CHANNELS);
 
-    gl.activeTexture(gl.TEXTURE1);
+    // Bind channel textures into units 0..MAX_CHANNELS-1, boundaries at MAX_CHANNELS.
+    for (let i = 0; i < MAX_CHANNELS; i++) {
+      gl.activeTexture(gl.TEXTURE0 + i);
+      gl.bindTexture(
+        gl.TEXTURE_2D,
+        i < count ? this.channels[i].state[this.idxCurr].texture : this.dummyTexture,
+      );
+      gl.uniform1i(gl.getUniformLocation(this.compositeProgram, `u_pressure_${i}`), i);
+    }
+    gl.activeTexture(gl.TEXTURE0 + MAX_CHANNELS);
     gl.bindTexture(gl.TEXTURE_2D, this.boundaryTex);
-    gl.uniform1i(gl.getUniformLocation(this.renderProgram, "u_boundaries"), 1);
+    gl.uniform1i(
+      gl.getUniformLocation(this.compositeProgram, "u_boundaries"),
+      MAX_CHANNELS,
+    );
 
-    gl.uniform1f(gl.getUniformLocation(this.renderProgram, "u_gain"), opts.gain);
-    const cmap =
-      opts.colormap === "thermal"
-        ? 1
-        : opts.colormap === "mono"
-          ? 2
-          : opts.colormap === "dark"
-            ? 3
-            : 0;
-    gl.uniform1i(gl.getUniformLocation(this.renderProgram, "u_colormap"), cmap);
-    gl.uniform1f(gl.getUniformLocation(this.renderProgram, "u_wall_alpha"), opts.wallAlpha);
+    // Colours — stride 3, one vec3 per channel in source order.
+    const colors = new Float32Array(MAX_CHANNELS * 3);
+    for (let i = 0; i < count; i++) {
+      const s = sources[i];
+      colors[i * 3 + 0] = s.color[0];
+      colors[i * 3 + 1] = s.color[1];
+      colors[i * 3 + 2] = s.color[2];
+    }
+    gl.uniform3fv(gl.getUniformLocation(this.compositeProgram, "u_colors"), colors);
+    gl.uniform1i(gl.getUniformLocation(this.compositeProgram, "u_channel_count"), count);
+
+    gl.uniform1f(gl.getUniformLocation(this.compositeProgram, "u_gain"), opts.gain);
     gl.uniform1f(
-      gl.getUniformLocation(this.renderProgram, "u_alpha_threshold"),
+      gl.getUniformLocation(this.compositeProgram, "u_alpha_threshold"),
       opts.alphaThreshold,
     );
-    gl.uniform1f(gl.getUniformLocation(this.renderProgram, "u_alpha_gamma"), opts.alphaGamma);
+    gl.uniform1f(gl.getUniformLocation(this.compositeProgram, "u_gamma"), opts.gamma);
+    gl.uniform1i(
+      gl.getUniformLocation(this.compositeProgram, "u_scale_mode"),
+      opts.scaleMode === "db" ? 1 : 0,
+    );
+    gl.uniform1f(gl.getUniformLocation(this.compositeProgram, "u_db_floor"), opts.dbFloor);
+    gl.uniform1f(gl.getUniformLocation(this.compositeProgram, "u_wall_alpha"), opts.wallAlpha);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.disable(gl.BLEND);

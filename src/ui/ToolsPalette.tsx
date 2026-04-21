@@ -1,4 +1,4 @@
-import type { Source } from "../core/Source";
+import { colorToCss, type Source } from "../core/Source";
 import type { WallRect } from "../core/Boundary";
 import type { Tool } from "./types";
 
@@ -65,16 +65,27 @@ export function ToolsPalette({
         <div style={{ display: "grid", gap: 2 }}>
           {sources.map((s, i) => {
             const selected = s.id === selectedSourceId;
+            const col = colorToCss(s.color);
             return (
               <div
                 key={s.id}
                 onClick={() => onSelectSource(s.id)}
                 style={{
                   ...rowStyle,
-                  borderColor: selected ? "var(--accent)" : "var(--border)",
-                  color: selected ? "var(--accent)" : "var(--text)",
+                  borderColor: selected ? col : "var(--border)",
+                  color: selected ? col : "var(--text)",
                 }}
               >
+                <span
+                  style={{
+                    width: 12,
+                    height: 12,
+                    background: s.enabled ? col : "transparent",
+                    border: `1px solid ${col}`,
+                    borderRadius: 2,
+                    flexShrink: 0,
+                  }}
+                />
                 <span className="mono" style={{ fontSize: 11 }}>
                   #{i + 1}
                 </span>

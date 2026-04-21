@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Grid, SPEED_OF_SOUND_MPS } from "../core/Grid";
-import { newSourceId, Source } from "../core/Source";
+import { newSourceId, Source, sourceColorFor } from "../core/Source";
 import type { WallRect } from "../core/Boundary";
-import type { ColorMap } from "../core/FDTDSimulation";
+import type { ScaleMode } from "../core/FDTDSimulation";
 import {
   DEFAULT_THRESHOLDS,
   loadImageData,
@@ -69,10 +69,11 @@ export function App() {
   const [running, setRunning] = useState(true);
   const [stepsPerFrame, setStepsPerFrame] = useState(6);
   const [gain, setGain] = useState(1.8);
-  const [colormap, setColormap] = useState<ColorMap>("dark");
+  const [scaleMode, setScaleMode] = useState<ScaleMode>("db");
+  const [dbFloor, setDbFloor] = useState(-48);
   const [wallAlpha, setWallAlpha] = useState(0.0);
-  const [alphaThreshold, setAlphaThreshold] = useState(0.15);
-  const [alphaGamma, setAlphaGamma] = useState(1.8);
+  const [alphaThreshold, setAlphaThreshold] = useState(0.05);
+  const [gamma, setGamma] = useState(1.6);
   const [showGrid, setShowGrid] = useState(false);
   const captureRef = useRef<null | (() => void)>(null);
 
@@ -80,19 +81,22 @@ export function App() {
   const [resetSignal, setResetSignal] = useState(0);
 
   const addSource = useCallback((xMeters: number, yMeters: number) => {
-    const s: Source = {
-      id: newSourceId(),
-      xMeters,
-      yMeters,
-      frequencyHz: 120,
-      amplitude: 0.9,
-      phaseRad: 0,
-      waveform: "sine",
-      radiusMeters: 1.0,
-      enabled: true,
-    };
-    setSources((prev) => [...prev, s]);
-    setSelectedSourceId(s.id);
+    setSources((prev) => {
+      const s: Source = {
+        id: newSourceId(),
+        xMeters,
+        yMeters,
+        frequencyHz: 120,
+        amplitude: 0.9,
+        phaseRad: 0,
+        waveform: "sine",
+        radiusMeters: 1.0,
+        enabled: true,
+        color: sourceColorFor(prev.length),
+      };
+      setSelectedSourceId(s.id);
+      return [...prev, s];
+    });
   }, []);
 
   const addWall = useCallback((w: WallRect) => setWalls((prev) => [...prev, w]), []);
@@ -265,10 +269,11 @@ export function App() {
         running={running}
         stepsPerFrame={stepsPerFrame}
         gain={gain}
-        colormap={colormap}
         wallAlpha={wallAlpha}
         alphaThreshold={alphaThreshold}
-        alphaGamma={alphaGamma}
+        gamma={gamma}
+        scaleMode={scaleMode}
+        dbFloor={dbFloor}
         showGrid={showGrid}
         resetSignal={resetSignal}
         onAddSource={addSource}
@@ -322,14 +327,16 @@ export function App() {
           onStepsPerFrameChange={setStepsPerFrame}
           gain={gain}
           onGainChange={setGain}
-          colormap={colormap}
-          onColormapChange={setColormap}
+          scaleMode={scaleMode}
+          onScaleModeChange={setScaleMode}
+          dbFloor={dbFloor}
+          onDbFloorChange={setDbFloor}
           wallAlpha={wallAlpha}
           onWallAlphaChange={setWallAlpha}
           alphaThreshold={alphaThreshold}
           onAlphaThresholdChange={setAlphaThreshold}
-          alphaGamma={alphaGamma}
-          onAlphaGammaChange={setAlphaGamma}
+          gamma={gamma}
+          onGammaChange={setGamma}
           showGrid={showGrid}
           onShowGridChange={setShowGrid}
           selectedSource={selectedSource}

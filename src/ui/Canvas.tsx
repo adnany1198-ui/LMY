@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FDTDSimulation, ColorMap } from "../core/FDTDSimulation";
+import { FDTDSimulation, ScaleMode } from "../core/FDTDSimulation";
 import type { Grid } from "../core/Grid";
 import { buildBoundaryMask, newWallId, WallRect } from "../core/Boundary";
-import type { Source } from "../core/Source";
+import { colorToCss, type Source } from "../core/Source";
 import {
   pixelsPerMeter,
   screenToWorld,
@@ -25,10 +25,11 @@ interface Props {
   running: boolean;
   stepsPerFrame: number;
   gain: number;
-  colormap: ColorMap;
   wallAlpha: number;
   alphaThreshold: number;
-  alphaGamma: number;
+  gamma: number;
+  scaleMode: ScaleMode;
+  dbFloor: number;
   showGrid: boolean;
   resetSignal: number;
   captureRef: React.MutableRefObject<null | (() => void)>;
@@ -153,12 +154,13 @@ export function SimulationCanvas(props: Props) {
       if (!canvas || !sim) return;
       // Render fresh with current options right before reading
       const p = propsRef.current;
-      sim.render(canvas.width, canvas.height, {
+      sim.render(canvas.width, canvas.height, p.sources, {
         gain: p.gain,
-        colormap: p.colormap,
         wallAlpha: p.wallAlpha,
         alphaThreshold: p.alphaThreshold,
-        alphaGamma: p.alphaGamma,
+        gamma: p.gamma,
+        scaleMode: p.scaleMode,
+        dbFloor: p.dbFloor,
       });
       canvas.toBlob((blob) => {
         if (!blob) return;
@@ -193,12 +195,13 @@ export function SimulationCanvas(props: Props) {
             sim.step(p.sources);
           }
         }
-        sim.render(canvas.width, canvas.height, {
+        sim.render(canvas.width, canvas.height, p.sources, {
           gain: p.gain,
-          colormap: p.colormap,
           wallAlpha: p.wallAlpha,
           alphaThreshold: p.alphaThreshold,
-          alphaGamma: p.alphaGamma,
+          gamma: p.gamma,
+          scaleMode: p.scaleMode,
+          dbFloor: p.dbFloor,
         });
       }
 
@@ -549,11 +552,12 @@ export function SimulationCanvas(props: Props) {
           const cx = origin.x + s.xMeters * ppm;
           const cy = origin.y + s.yMeters * ppm;
           const selected = s.id === props.selectedSourceId;
+          const col = colorToCss(s.color);
 
           // Diagnostic: the grid cell the shader actually injects into.
           // metersToCell maps world (m) → continuous cell index; floor() gives
-          // the containing cell. If this cyan square doesn't sit under the
-          // pink dot, the screen→grid transform is off.
+          // the containing cell. If this outline doesn't sit under the
+          // coloured dot, the screen→grid transform is off.
           const cell = props.grid.metersToCell(s.xMeters, s.yMeters);
           const cellGx = Math.floor(cell.x);
           const cellGy = Math.floor(cell.y);
@@ -568,26 +572,27 @@ export function SimulationCanvas(props: Props) {
                 y={cellY}
                 width={cellSz}
                 height={cellSz}
-                fill="rgba(0, 220, 255, 0.18)"
-                stroke="rgba(0, 220, 255, 0.9)"
+                fill="none"
+                stroke={col}
                 strokeWidth={1}
+                opacity={0.9}
               />
               <circle
                 cx={cx}
                 cy={cy}
                 r={Math.max(6, s.radiusMeters * ppm)}
                 fill="none"
-                stroke={selected ? "var(--accent)" : "rgba(255,255,255,0.35)"}
-                strokeWidth={1}
+                stroke={selected ? col : col + "80"}
+                strokeWidth={selected ? 1.5 : 1}
                 strokeDasharray="2 3"
               />
               <circle
                 cx={cx}
                 cy={cy}
-                r={4}
-                fill={s.enabled ? "var(--accent)" : "#444"}
+                r={5}
+                fill={s.enabled ? col : "#333"}
                 stroke="#000"
-                strokeWidth={1}
+                strokeWidth={1.2}
               />
             </g>
           );

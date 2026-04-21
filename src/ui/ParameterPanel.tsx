@@ -1,6 +1,6 @@
 import type { Grid } from "../core/Grid";
 import type { Source, Waveform } from "../core/Source";
-import type { ColorMap } from "../core/FDTDSimulation";
+import type { ScaleMode } from "../core/FDTDSimulation";
 
 interface Props {
   grid: Grid;
@@ -10,14 +10,16 @@ interface Props {
   onStepsPerFrameChange: (v: number) => void;
   gain: number;
   onGainChange: (v: number) => void;
-  colormap: ColorMap;
-  onColormapChange: (v: ColorMap) => void;
+  scaleMode: ScaleMode;
+  onScaleModeChange: (v: ScaleMode) => void;
+  dbFloor: number;
+  onDbFloorChange: (v: number) => void;
   wallAlpha: number;
   onWallAlphaChange: (v: number) => void;
   alphaThreshold: number;
   onAlphaThresholdChange: (v: number) => void;
-  alphaGamma: number;
-  onAlphaGammaChange: (v: number) => void;
+  gamma: number;
+  onGammaChange: (v: number) => void;
   showGrid: boolean;
   onShowGridChange: (v: boolean) => void;
   selectedSource: Source | null;
@@ -83,20 +85,47 @@ export function ParameterPanel(p: Props) {
 
       <Section title="Visualisation">
         <label>
-          Colourmap
+          Amplitude scale
           <select
-            value={p.colormap}
-            onChange={(e) => p.onColormapChange(e.target.value as ColorMap)}
+            value={p.scaleMode}
+            onChange={(e) => p.onScaleModeChange(e.target.value as ScaleMode)}
           >
-            <option value="dark">Dark spectrogram</option>
-            <option value="spectral">Spectral (blue · magenta)</option>
-            <option value="thermal">Thermal</option>
-            <option value="mono">Monochrome</option>
+            <option value="linear">Linear (|p|)</option>
+            <option value="db">Decibel (20·log₁₀|p|)</option>
           </select>
         </label>
 
+        {p.scaleMode === "db" && (
+          <label>
+            dB floor: <span className="mono">{p.dbFloor.toFixed(0)} dB</span>
+            <input
+              type="range"
+              min={-90}
+              max={-20}
+              step={1}
+              value={p.dbFloor}
+              onChange={(e) => p.onDbFloorChange(parseFloat(e.target.value))}
+            />
+          </label>
+        )}
+
         <label>
-          Alpha threshold: <span className="mono">{p.alphaThreshold.toFixed(2)}</span>
+          Visibility γ: <span className="mono">{p.gamma.toFixed(2)}</span>
+          <input
+            type="range"
+            min={0.3}
+            max={4}
+            step={0.05}
+            value={p.gamma}
+            onChange={(e) => p.onGammaChange(parseFloat(e.target.value))}
+          />
+          <div style={{ fontSize: 11, color: "var(--text-faint)" }}>
+            higher = distant wavefronts visible · lower = peaks only
+          </div>
+        </label>
+
+        <label>
+          Threshold: <span className="mono">{p.alphaThreshold.toFixed(2)}</span>
           <input
             type="range"
             min={0}
@@ -104,18 +133,6 @@ export function ParameterPanel(p: Props) {
             step={0.01}
             value={p.alphaThreshold}
             onChange={(e) => p.onAlphaThresholdChange(parseFloat(e.target.value))}
-          />
-        </label>
-
-        <label>
-          Peak contrast (γ): <span className="mono">{p.alphaGamma.toFixed(2)}</span>
-          <input
-            type="range"
-            min={0.3}
-            max={4}
-            step={0.05}
-            value={p.alphaGamma}
-            onChange={(e) => p.onAlphaGammaChange(parseFloat(e.target.value))}
           />
         </label>
 
