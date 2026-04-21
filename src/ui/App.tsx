@@ -68,6 +68,7 @@ export function App() {
 
   const [running, setRunning] = useState(true);
   const [stepsPerFrame, setStepsPerFrame] = useState(6);
+  const [damping, setDamping] = useState(0.99);
   const [gain, setGain] = useState(1.8);
   const [scaleMode, setScaleMode] = useState<ScaleMode>("db");
   const [dbFloor, setDbFloor] = useState(-48);
@@ -268,6 +269,7 @@ export function App() {
         selectedSourceId={selectedSourceId}
         running={running}
         stepsPerFrame={stepsPerFrame}
+        damping={damping}
         gain={gain}
         wallAlpha={wallAlpha}
         alphaThreshold={alphaThreshold}
@@ -325,6 +327,8 @@ export function App() {
           onDxChange={setDxMeters}
           stepsPerFrame={stepsPerFrame}
           onStepsPerFrameChange={setStepsPerFrame}
+          damping={damping}
+          onDampingChange={setDamping}
           gain={gain}
           onGainChange={setGain}
           scaleMode={scaleMode}

@@ -8,6 +8,8 @@ interface Props {
   onDxChange: (v: number) => void;
   stepsPerFrame: number;
   onStepsPerFrameChange: (v: number) => void;
+  damping: number;
+  onDampingChange: (v: number) => void;
   gain: number;
   onGainChange: (v: number) => void;
   scaleMode: ScaleMode;
@@ -80,6 +82,21 @@ export function ParameterPanel(p: Props) {
             value={p.stepsPerFrame}
             onChange={(e) => p.onStepsPerFrameChange(parseInt(e.target.value, 10))}
           />
+        </label>
+
+        <label>
+          Damping: <span className="mono">{p.damping.toFixed(4)}</span>
+          <input
+            type="range"
+            min={0.9}
+            max={1.0}
+            step={0.0005}
+            value={p.damping}
+            onChange={(e) => p.onDampingChange(parseFloat(e.target.value))}
+          />
+          <div style={{ fontSize: 11, color: "var(--text-faint)" }}>
+            per-step pressure retention · lower = faster 1/r-like falloff
+          </div>
         </label>
       </Section>
 

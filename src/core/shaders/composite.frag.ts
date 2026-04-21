@@ -2,10 +2,13 @@ export const COMPOSITE_FRAG = /* glsl */ `#version 300 es
 precision highp float;
 
 // Composites the per-source pressure textures into one picture.
-// Each active channel contributes its own colour, scaled by that source's
-// local pressure amplitude after the user's chosen intensity curve.
-// Channels add linearly, so where two sources overlap their colours mix
-// the same way the physical pressures would add — e.g. red + cyan → white.
+//
+// Hue is chosen by dominance: each channel weighs its colour by
+// intensity^2, so the loudest speaker at a cell wins the hue while a
+// much quieter one barely tints it. Only near-equal amplitudes produce
+// a true blend. Brightness (alpha) is the L2 norm of the intensities,
+// so overlapping loud speakers look brighter than one alone — without
+// saturating to white.
 //
 // Texture y is flipped on sampling: the internal pipeline uses WebGL's
 // native y-up convention but the whole DOM/UI side uses y-down, and the
@@ -81,19 +84,20 @@ void main() {
         return;
     }
 
-    vec3 accum = vec3(0.0);
-    float alpha = 0.0;
+    vec3 hue_weighted = vec3(0.0);
+    float energy = 0.0;
 
     for (int i = 0; i < MAX_CHANNELS; i++) {
         if (i >= u_channel_count) break;
         float p = sampleChannel(i, uv);
         float intensity = intensityFor(abs(p));
-        accum += u_colors[i] * intensity;
-        alpha = max(alpha, intensity);
+        float w = intensity * intensity;
+        hue_weighted += u_colors[i] * w;
+        energy += w;
     }
 
-    // Cap accumulated colour so extreme overlaps don't explode past white.
-    accum = clamp(accum, vec3(0.0), vec3(1.2));
-    fragColor = vec4(accum, clamp(alpha, 0.0, 1.0));
+    vec3 hue = energy > 1e-6 ? hue_weighted / energy : vec3(0.0);
+    float brightness = clamp(sqrt(energy), 0.0, 1.0);
+    fragColor = vec4(hue, brightness);
 }
 `;

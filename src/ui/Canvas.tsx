@@ -24,6 +24,7 @@ interface Props {
   selectedSourceId: string | null;
   running: boolean;
   stepsPerFrame: number;
+  damping: number;
   gain: number;
   wallAlpha: number;
   alphaThreshold: number;
@@ -118,6 +119,7 @@ export function SimulationCanvas(props: Props) {
     canvas.height = props.grid.height;
     try {
       const sim = new FDTDSimulation(canvas, { grid: props.grid });
+      sim.setDamping(propsRef.current.damping);
       simRef.current = sim;
       return () => {
         sim.dispose();
@@ -133,6 +135,11 @@ export function SimulationCanvas(props: Props) {
   useEffect(() => {
     simRef.current?.reset();
   }, [props.resetSignal]);
+
+  // Push damping into sim whenever it changes (including initial mount)
+  useEffect(() => {
+    simRef.current?.setDamping(props.damping);
+  }, [props.damping]);
 
   // Upload boundaries whenever walls, grid, or segmentation change
   useEffect(() => {

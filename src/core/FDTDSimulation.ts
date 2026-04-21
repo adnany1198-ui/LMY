@@ -281,6 +281,10 @@ export class FDTDSimulation {
     this.absorbStrength = v;
   }
 
+  setDamping(v: number) {
+    this.damping = v;
+  }
+
   /** Allocate a channel for each source id, disposing channels whose source
    *  is gone. Caps at MAX_CHANNELS — extra sources fall off the end. */
   private syncChannels(sources: readonly Source[]) {
