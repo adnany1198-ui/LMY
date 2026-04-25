@@ -68,13 +68,13 @@ export function App() {
 
   const [running, setRunning] = useState(true);
   const [stepsPerFrame, setStepsPerFrame] = useState(6);
-  const [damping, setDamping] = useState(0.99);
+  const [damping, setDamping] = useState(0.97);
   const [gain, setGain] = useState(1.8);
   const [scaleMode, setScaleMode] = useState<ScaleMode>("db");
-  const [dbFloor, setDbFloor] = useState(-48);
+  const [dbFloor, setDbFloor] = useState(-30);
   const [wallAlpha, setWallAlpha] = useState(0.0);
   const [alphaThreshold, setAlphaThreshold] = useState(0.05);
-  const [gamma, setGamma] = useState(1.6);
+  const [gamma, setGamma] = useState(1.0);
   const [showGrid, setShowGrid] = useState(false);
   const captureRef = useRef<null | (() => void)>(null);
 

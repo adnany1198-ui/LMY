@@ -88,7 +88,7 @@ export function ParameterPanel(p: Props) {
           Damping: <span className="mono">{p.damping.toFixed(4)}</span>
           <input
             type="range"
-            min={0.9}
+            min={0.85}
             max={1.0}
             step={0.0005}
             value={p.damping}
